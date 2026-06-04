@@ -16,11 +16,35 @@ def query_db(sql_query, params=()):
     conn.close()
     return df
 
+# app.py 상단의 init_log_table_safety 함수를 이 완벽한 버전으로 교체합니다.
 def init_log_table_safety():
     conn = sqlite3.connect("rpg-database.db")
     cursor = conn.cursor()
     
-    # Tabela de histórico de missões
+    # 1. 퀘스트 마스터 테이블 자동 생성 (★클라우드 서버를 위한 핵심 추가분)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS master_quest_db (
+        quest_id TEXT PRIMARY KEY,
+        quest_name TEXT,
+        difficulty TEXT,
+        reward_xp INTEGER,
+        reward_gold INTEGER,
+        frequency INTEGER,
+        status TEXT
+    )
+    """)
+    
+    # 2. 초기 퀘스트 데이터 주입 (포르투갈어 버전으로 세련되게 반영!)
+    cursor.executemany("""
+    INSERT OR IGNORE INTO master_quest_db VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, [
+        ('Q2606-01', 'Alongamento matinal', 'E', 10, 5, 8, 'Active'),
+        ('Q2606-02', 'Ler 3 páginas de um livro', 'N', 30, 15, 8, 'Active'),
+        ('Q2606-03', 'Análise tática de futebol', 'H', 50, 25, 3, 'Active'),
+        ('Q2606-04', 'Relatório de personal trainer', 'H', 50, 25, 11, 'Active')
+    ])
+    
+    # 3. 기존 갓생 로그 테이블
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS quest_history_log (
         log_date TEXT PRIMARY KEY,
@@ -31,7 +55,7 @@ def init_log_table_safety():
     )
     """)
     
-    # Tabela do menu de recompensas (Reward-Menu)
+    # 4. 상점 메뉴판 테이블
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS reward_menu (
         reward_item TEXT PRIMARY KEY,
@@ -39,7 +63,7 @@ def init_log_table_safety():
     )
     """)
     
-    # Tabela de histórico de compras (Reward-Shop-Log)
+    # 5. 보상 구매 영수증 테이블
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS reward_shop_log (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,7 +73,7 @@ def init_log_table_safety():
     )
     """)
     
-    # Dados iniciais da loja (Inserção única)
+    # 상점 메뉴 초기 데이터 주입
     cursor.executemany("""
     INSERT OR IGNORE INTO reward_menu VALUES (?, ?)
     """, [
@@ -62,7 +86,7 @@ def init_log_table_safety():
     conn.commit()
     conn.close()
 
-# Ativar mecanismo de segurança do banco de dados
+# 안전장치 가동!
 init_log_table_safety()
 
 
