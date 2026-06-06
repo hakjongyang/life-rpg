@@ -16,12 +16,17 @@ def query_db(sql_query, params=()):
     conn.close()
     return df
 
-# app.py 상단의 init_log_table_safety 함수를 이 완벽한 버전으로 교체합니다.
+def run_db_command(sql_command, params=()):
+    conn = sqlite3.connect("rpg-database.db")
+    cursor = conn.cursor()
+    cursor.execute(sql_command, params)
+    conn.commit()
+    conn.close()
+
 def init_log_table_safety():
     conn = sqlite3.connect("rpg-database.db")
     cursor = conn.cursor()
     
-    # 1. 퀘스트 마스터 테이블 자동 생성 (★클라우드 서버를 위한 핵심 추가분)
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS master_quest_db (
         quest_id TEXT PRIMARY KEY,
@@ -34,17 +39,6 @@ def init_log_table_safety():
     )
     """)
     
-    # 2. 초기 퀘스트 데이터 주입 (포르투갈어 버전으로 세련되게 반영!)
-    cursor.executemany("""
-    INSERT OR IGNORE INTO master_quest_db VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, [
-        ('Q2606-01', 'Alongamento matinal', 'E', 10, 5, 8, 'Active'),
-        ('Q2606-02', 'Ler 3 páginas de um livro', 'N', 30, 15, 8, 'Active'),
-        ('Q2606-03', 'Análise tática de futebol', 'H', 50, 25, 3, 'Active'),
-        ('Q2606-04', 'Relatório de personal trainer', 'H', 50, 25, 11, 'Active')
-    ])
-    
-    # 3. 기존 갓생 로그 테이블
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS quest_history_log (
         log_date TEXT PRIMARY KEY,
@@ -55,7 +49,6 @@ def init_log_table_safety():
     )
     """)
     
-    # 4. 상점 메뉴판 테이블
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS reward_menu (
         reward_item TEXT PRIMARY KEY,
@@ -63,7 +56,6 @@ def init_log_table_safety():
     )
     """)
     
-    # 5. 보상 구매 영수증 테이블
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS reward_shop_log (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -73,7 +65,15 @@ def init_log_table_safety():
     )
     """)
     
-    # 상점 메뉴 초기 데이터 주입
+    cursor.executemany("""
+    INSERT OR IGNORE INTO master_quest_db VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, [
+        ('Q2606-01', 'Alongamento matinal', 'E', 10, 5, 8, 'Active'),
+        ('Q2606-02', 'Ler 3 páginas de um livro', 'N', 30, 15, 8, 'Active'),
+        ('Q2606-03', 'Análise tática de futebol', 'H', 50, 25, 3, 'Active'),
+        ('Q2606-04', 'Relatório de personal trainer', 'H', 50, 25, 11, 'Active')
+    ])
+    
     cursor.executemany("""
     INSERT OR IGNORE INTO reward_menu VALUES (?, ?)
     """, [
@@ -86,191 +86,250 @@ def init_log_table_safety():
     conn.commit()
     conn.close()
 
-# 안전장치 가동!
 init_log_table_safety()
 
 
 # ==========================================
-# 📊 [Cálculo de Dados: Status Atual em Tempo Real]
+# 📊 [Cálculo de Dados: Status Atual]
 # ==========================================
 try:
-    # Soma de XP e Ouro das missões concluídas
     stats_df = query_db("SELECT SUM(total_xp) as attr_xp, SUM(total_gold) as attr_gold FROM quest_history_log")
     total_accumulated_xp = int(stats_df['attr_xp'].iloc[0]) if pd.notna(stats_df['attr_xp'].iloc[0]) else 0
     total_earned_gold = int(stats_df['attr_gold'].iloc[0]) if pd.notna(stats_df['attr_gold'].iloc[0]) else 0
     
-    # Soma de Ouro gasto na loja
     shop_df = query_db("SELECT SUM(spent_gold) as attr_spent FROM reward_shop_log")
     total_spent_gold = int(shop_df['attr_spent'].iloc[0]) if pd.notna(shop_df['attr_spent'].iloc[0]) else 0
     
-    # Cálculo do saldo de Ouro restante
     current_remaining_gold = total_earned_gold - total_spent_gold
-
 except Exception:
-    total_accumulated_xp = 0
-    total_earned_gold = 0
-    current_remaining_gold = 0
+    total_accumulated_xp, total_earned_gold, current_remaining_gold = 0, 0, 0
 
-# Definição de Nível e Título com base no XP acumulado
 if total_accumulated_xp >= 5000:
-    current_level, character_title = 5, "Transcedente da Produtividade 🌌"
+    current_level, character_title = 5, "Transcendente da Produtividade 🌌"
 elif total_accumulated_xp >= 2500:
     current_level, character_title = 4, "Mestre dos Hábitos ⚡"
 elif total_accumulated_xp >= 1200:
     current_level, character_title = 3, "Líder da Rotina ⚔️"
 elif total_accumulated_xp >= 500:
-    current_level, character_title = 2, "Praticante Dedicado 跑"
+    current_level, character_title = 2, "Praticante Dedicado 🏃"
 else:
     current_level, character_title = 1, "Iniciante da Vida Saudável 🌱"
 
 
 # ==========================================
-# 🖥️ [Frontend UI: Interface em Português]
+# 🖥️ [Frontend UI: Abas de Navegação]
 # ==========================================
-st.title("👑 Meu Painel de RPG Pessoal")
+st.title("👑 Painel de RPG Pessoal")
 
-# --- A. Seção de Status do Personagem ---
-st.write("---")
-st.subheader("👤 Status do Personagem (Character Dashboard)")
+tab_play, tab_manage = st.tabs(["🎮 Jogar (플레이)", "⚙️ Gerenciador de Missões (퀘스트 관리)"])
 
-status_col1, status_col2, status_col3 = st.columns(3)
-with status_col1:
-    st.metric("Nível Atual", f"LV. {current_level}")
-with status_col2:
-    st.metric("XP Acumulado", f"{total_accumulated_xp} XP")
-with status_col3:
-    st.metric("Ouro Disponível", f"{current_remaining_gold} G")
+# ------------------------------------------
+# 🎮 TAB 1: 플레이 대시보드 영역
+# ------------------------------------------
+with tab_play:
+    st.subheader("👤 Status do Personagem")
+    status_col1, status_col2, status_col3 = st.columns(3)
+    with status_col1:
+        st.metric("Nível Atual", f"LV. {current_level}")
+    with status_col2:
+        st.metric("XP Acumulado", f"{total_accumulated_xp} XP")
+    with status_col3:
+        st.metric("Ouro Disponível", f"{current_remaining_gold} G")
+    st.markdown(f"**Seu Título Honorário Atual:** `{character_title}`")
 
-st.markdown(f"**Seu Título Honorário Atual:** `{character_title}`")
+    st.write("---")
+    st.subheader("⚙️ Painel de Controle")
+    selected_date = st.date_input("Selecione uma data", datetime.now(), key="play_date")
 
+    day_of_week = selected_date.weekday() 
+    numbers_weekday = 1 if day_of_week == 6 else day_of_week + 2
+    day_of_month = selected_date.day
+    _, last_day = calendar.monthrange(selected_date.year, selected_date.month)
 
-# --- B. Seção do Painel de Controle ---
-st.write("---")
-st.subheader("⚙️ Painel de Controle (Control Panel)")
+    is_month_first = (day_of_month == 1)
+    is_month_last = (day_of_month == last_day)
 
-# Tradução do calendário interativo para o padrão local
-selected_date = st.date_input("Selecione uma data", datetime.now())
+    st.write("---")
+    st.subheader("🎯 Missões de Hoje")
 
-# Verificação do dia da semana e início/fim do mês
-day_of_week = selected_date.weekday() 
-numbers_weekday = 1 if day_of_week == 6 else day_of_week + 2
-day_of_month = selected_date.day
-_, last_day = calendar.monthrange(selected_date.year, selected_date.month)
+    sql_filter = """
+    SELECT quest_id, quest_name, reward_xp, reward_gold 
+    FROM master_quest_db 
+    WHERE status = 'Active' AND (
+        frequency = 8 OR 
+        frequency = ? OR 
+        (? = 1 AND frequency = 10) OR 
+        (? = 1 AND frequency = 11)
+    )
+    """
+    today_quests = query_db(sql_filter, (numbers_weekday, is_month_first, is_month_last))
 
-is_month_first = (day_of_month == 1)
-is_month_last = (day_of_month == last_day)
+    completed_ids = []
+    total_xp = 0
+    total_gold = 0
 
-
-# --- C. Seção de Missões do Dia ---
-st.write("---")
-st.subheader("🎯 Missões de Hoje")
-
-sql_filter = """
-SELECT quest_id, quest_name, reward_xp, reward_gold 
-FROM master_quest_db 
-WHERE status = 'Active' AND (
-    frequency = 8 OR 
-    frequency = ? OR 
-    (? = 1 AND frequency = 10) OR 
-    (? = 1 AND frequency = 11)
-)
-"""
-
-today_quests = query_db(sql_filter, (numbers_weekday, is_month_first, is_month_last))
-
-completed_ids = []
-total_xp = 0
-total_gold = 0
-
-if not today_quests.empty:
-    for index, row in today_quests.iterrows():
-        is_done = st.checkbox(f"[{row['quest_id']}] {row['quest_name']} (+{row['reward_xp']} XP / +{row['reward_gold']} G)")
-        if is_done:
-            completed_ids.append(row['quest_id'])
-            total_xp += row['reward_xp']
-            total_gold += row['reward_gold']
-else:
-    st.info("Nenhuma missão agendada para hoje. Aproveite para descansar!")
-
-
-# --- D. Seção de Resumo do Dia ---
-st.write("---")
-st.subheader("📝 Resumo do Dia (Daily Summary)")
-
-st.code(f"Missões Concluídas: {', '.join(completed_ids) if completed_ids else 'Nenhuma'}\n"
-        f"Total de XP de Hoje: {total_xp} XP\n"
-        f"Total de Ouro de Hoje: {total_gold} Gold", language="text")
-
-if st.button("💾 Salvar Resultados de Hoje no Banco de Dados"):
-    if not completed_ids:
-        st.warning("⚠️ Você não selecionou nenhuma missão concluída! Conclua pelo menos uma tarefa antes de salvar.")
+    if not today_quests.empty:
+        for index, row in today_quests.iterrows():
+            is_done = st.checkbox(f"[{row['quest_id']}] {row['quest_name']} (+{row['reward_xp']} XP / +{row['reward_gold']} G)", key=f"q_{row['quest_id']}")
+            if is_done:
+                completed_ids.append(row['quest_id'])
+                total_xp += row['reward_xp']
+                total_gold += row['reward_gold']
     else:
-        try:
-            conn = sqlite3.connect("rpg-database.db")
-            cursor = conn.cursor()
-            
-            weekday_names = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"]
-            current_day_name = weekday_names[selected_date.weekday()]
-            
-            sql_insert = """
-            INSERT OR REPLACE INTO quest_history_log (log_date, day_of_week, completed_ids, total_xp, total_gold)
-            VALUES (?, ?, ?, ?, ?)
-            """
-            
-            formatted_date = selected_date.strftime("%Y-%m-%d")
-            cursor.execute(sql_insert, (
-                formatted_date,
-                current_day_name,
-                ", ".join(completed_ids),
-                total_xp,
-                total_gold
-            ))
-            
-            conn.commit()
-            conn.close()
-            
-            st.balloons() # Efeito de balões para comemorar
-            st.success(f"🎉 Resultados do dia [{formatted_date}] salvos com sucesso no SQLite!")
-            st.rerun()
-            
-        except Exception as e:
-            st.error(f"❌ Erro ao salvar no banco de dados: {e}")
+        st.info("Nenhuma missão ativa agendada para hoje. Aproveite para descansar!")
 
+    st.write("---")
+    st.subheader("📝 Resumo do Dia")
+    st.code(f"Missões Concluídas: {', '.join(completed_ids) if completed_ids else 'Nenhuma'}\n"
+            f"Total de XP de Hoje: {total_xp} XP\n"
+            f"Total de Ouro de Hoje: {total_gold} Gold", language="text")
 
-# --- E. Seção da Loja de Recompensas ---
-st.write("---")
-st.subheader("🛒 Loja de Recompensas Real (Reward Shop)")
-
-menu_df = query_db("SELECT reward_item, price_gold FROM reward_menu")
-item_list = menu_df['reward_item'].tolist()
-
-if item_list:
-    selected_item = st.selectbox("Escolha sua recompensa:", item_list)
-    item_price = int(menu_df[menu_df['reward_item'] == selected_item]['price_gold'].iloc[0])
-    st.info(f"💰 O preço de '{selected_item}' é **{item_price} Gold**. (Saldo atual: {current_remaining_gold} G)")
-    
-    if st.button("💳 Usar Ouro (Comprar Recompensa)"):
-        if current_remaining_gold < item_price:
-            st.error("❌ Ouro insuficiente! Conclua mais missões diárias para acumular riqueza.")
+    if st.button("💾 Salvar Resultados de Hoje", key="btn_save_daily"):
+        if not completed_ids:
+            st.warning("⚠️ Você não selecionou nenhuma missão concluída!")
         else:
             try:
-                conn = sqlite3.connect("rpg-database.db")
-                cursor = conn.cursor()
+                weekday_names = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"]
+                current_day_name = weekday_names[selected_date.weekday()]
                 
-                purchase_date_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                cursor.execute("""
-                INSERT INTO reward_shop_log (purchase_date, reward_item, spent_gold)
-                VALUES (?, ?, ?)
-                """, (purchase_date_str, selected_item, item_price))
+                sql_insert = """
+                INSERT OR REPLACE INTO quest_history_log (log_date, day_of_week, completed_ids, total_xp, total_gold)
+                VALUES (?, ?, ?, ?, ?)
+                """
+                formatted_date = selected_date.strftime("%Y-%m-%d")
+                run_db_command(sql_insert, (formatted_date, current_day_name, ", ".join(completed_ids), total_xp, total_gold))
                 
-                conn.commit()
-                conn.close()
-                
-                st.snow() # Efeito de neve para compras
-                st.success(f"🎉 Você comprou '{selected_item}' com sucesso! Aproveite sua recompensa!")
+                st.balloons()
+                st.success(f"🎉 Resultados do dia [{formatted_date}] salvos com sucesso!")
                 st.rerun()
-                
             except Exception as e:
-                st.error(f"Erro ao usar a loja: {e}")
-else:
-    st.error("Nenhum produto registrado na loja.")
+                st.error(f"❌ Erro ao salvar: {e}")
+
+    st.write("---")
+    st.subheader("🛒 Loja de Recompensas Real")
+    menu_df = query_db("SELECT reward_item, price_gold FROM reward_menu")
+    item_list = menu_df['reward_item'].tolist()
+
+    if item_list:
+        selected_item = st.selectbox("Escolha sua recompensa:", item_list, key="shop_select")
+        item_price = int(menu_df[menu_df['reward_item'] == selected_item]['price_gold'].iloc[0])
+        st.info(f"💰 Preço: {item_price} Gold. (Saldo: {current_remaining_gold} G)")
+        
+        if st.button("💳 Usar Ouro (Comprar Recompensa)", key="btn_buy_reward"):
+            if current_remaining_gold < item_price:
+                st.error("❌ Ouro insuficiente!")
+            else:
+                try:
+                    purchase_date_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    run_db_command("INSERT INTO reward_shop_log (purchase_date, reward_item, spent_gold) VALUES (?, ?, ?)", 
+                                   (purchase_date_str, selected_item, item_price))
+                    st.snow()
+                    st.success(f"🎉 Você comprou '{selected_item}'!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erro ao usar a loja: {e}")
+
+
+# ------------------------------------------
+# ⚙️ TAB 2: 퀘스트 관리자 영역 (정렬 및 스타일링 보완)
+# ------------------------------------------
+with tab_manage:
+    st.subheader("🛠️ Painel do Administrador (퀘스트 관리자 관제탑)")
+    
+    # 1. 지하실에서 꺼내올 때 Active가 항상 위로 오도록 SQL 정렬 (Active -> Inactive 순서)
+    all_quests = query_db("""
+        SELECT quest_id, quest_name, difficulty, reward_xp, reward_gold, frequency, status 
+        FROM master_quest_db
+        ORDER BY status ASC, quest_id DESC
+    """)
+    
+    # 🎨 2. 비활성(Inactive) 행만 흐릿하게(연회색) 만드는 스타일러 함수 선언
+    def style_inactive_rows(row):
+        if row['status'] == 'Inactive':
+            return ['color: #A0A0A0; font-style: italic;'] * len(row) # 흐릿한 이탤릭체 처리
+        return [''] * len(row)
+    
+    st.markdown("### 📜 Lista de Todas as Missões (현재 등록된 전체 퀘스트)")
+    
+    # 스타일러를 입힌 아름다운 판다스 표 출력
+    styled_df = all_quests.style.apply(style_inactive_rows, axis=1)
+    st.dataframe(styled_df, use_container_width=True)
+    
+    st.write("---")
+    
+    manage_action = st.radio("Selecione uma ação (작업 선택):", ["➕ Adicionar Nova Missão (퀘스트 추가)", "🔄 Alterar Status da Missão (상태 수정/비활성화)"], horizontal=True)
+    
+    # ➕ 1. 새로운 퀘스트 추가 양식
+    if "➕" in manage_action:
+        st.markdown("### ➕ Criar Nova Missão (새 퀘스트 만들기)")
+        
+        today_str = datetime.now().strftime("%y%m%d")
+        id_prefix = f"Q{today_str}-"
+        
+        try:
+            count_df = query_db("SELECT COUNT(*) as cnt FROM master_quest_db WHERE quest_id LIKE ?", (f"{id_prefix}%",))
+            today_count = int(count_df['cnt'].iloc[0])
+        except Exception:
+            today_count = 0
+            
+        next_sequence = today_count + 1
+        auto_generated_id = f"{id_prefix}{next_sequence:02d}"
+        
+        st.info(f"🆔 **Código Gerado Automatically:** `{auto_generated_id}`")
+        
+        new_name = st.text_input("Nome da Missão (퀘스트 내용)", placeholder="Fazer academia por 1 hora")
+        
+        col_m1, col_m2 = st.columns(2)
+        with col_m1:
+            new_diff = st.selectbox("Dificuldade (난이도)", ["E", "N", "H"])
+        with col_m2:
+            new_freq = st.selectbox("Frequência (반복 요일 선택)", [
+                ("Diário (매일)", 8),
+                ("Domingo (일요일)", 1), ("Segunda (월요일)", 2), ("Terça (화요일)", 3),
+                ("Quarta (수요일)", 4), ("Quinta (목요일)", 5), ("Sexta (금요일)", 6), ("Sábado (토요일)", 7),
+                ("Início do Mês (월초)", 10), ("Fim do Mês (월말)", 11)
+            ], format_func=lambda x: x[0])
+            
+        diff_rewards = {"E": (10, 5), "N": (30, 15), "H": (50, 25)}
+        xp_reward, gold_reward = diff_rewards[new_diff]
+        st.write(f"💡 *Esta dificuldade concederá automaticamente:* **+{xp_reward} XP** / **+{gold_reward} Gold**")
+        
+        if st.button("🚀 Registrar Nova Missão (데이터베이스에 추가)"):
+            if not new_name:
+                st.error("❌ O nome da missão é obrigatório!")
+            else:
+                try:
+                    run_db_command("""
+                    INSERT INTO master_quest_db (quest_id, quest_name, difficulty, reward_xp, reward_gold, frequency, status)
+                    VALUES (?, ?, ?, ?, ?, ?, 'Active')
+                    """, (auto_generated_id, new_name, new_diff, xp_reward, gold_reward, new_freq[1]))
+                    st.success(f"🎉 Missão [{auto_generated_id}] registrada com sucesso!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Erro no banco de dados: {e}")
+
+    # 🔄 2. 기존 퀘스트 상태 수정 양식 (활성화/비활성화 스위치)
+    else:
+        st.markdown("### 🔄 Modificar Status (퀘스트 활성/비활성 스위치)")
+        
+        # 선택 상자에서도 가독성을 위해 정렬된 퀘스트 아이디 명단 제공
+        quest_options = all_quests['quest_id'].tolist()
+        
+        if quest_options:
+            target_id = st.selectbox("Selecione o Código da Missão:", quest_options)
+            current_status = all_quests[all_quests['quest_id'] == target_id]['status'].iloc[0]
+            current_title = all_quests[all_quests['quest_id'] == target_id]['quest_name'].iloc[0]
+            
+            st.warning(f"A missão selecionada é: **{current_title}** (Status Atual: `{current_status}`)")
+            
+            new_status = st.selectbox("Selecione o Novo Status:", ["Active", "Inactive"], index=0 if current_status == "Active" else 1)
+            
+            if st.button("💾 Atualizar Status no Banco de Dados"):
+                try:
+                    run_db_command("UPDATE master_quest_db SET status = ? WHERE quest_id = ?", (new_status, target_id))
+                    st.success(f"⚙️ Status da missão [{target_id}] alterado para `{new_status}` com sucesso!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erro ao atualizar status: {e}")
+        else:
+            st.info("Nenhuma missão cadastrada no sistema.")
