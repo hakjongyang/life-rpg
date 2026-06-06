@@ -51,11 +51,12 @@ def init_log_table_safety():
     )
     """)
     
-    # C. Tabela do menu de recompensas
+    # 🌟 [구조 개편] C. Tabela do menu de recompensas (status 컬럼 추가)
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS reward_menu (
         reward_item TEXT PRIMARY KEY,
-        price_gold INTEGER
+        price_gold INTEGER,
+        status TEXT DEFAULT 'Active'
     )
     """)
     
@@ -69,7 +70,7 @@ def init_log_table_safety():
     )
     """)
     
-    # 🌟 [신설] E. Tabela de Configuração de Níveis (레벨 메커니즘 지하실 설정 테이블)
+    # 🌟 [신설] E. Tabela de Configuração de Níveis (1~100 레벨 설정 테이블)
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS level_config (
         level INTEGER PRIMARY KEY,
@@ -78,28 +79,42 @@ def init_log_table_safety():
     )
     """)
     
-    # F. Dados iniciais das missões (최초 1회 샘플 주입)
+    # 🌟 [신설] F. Tabela de Histórico de Level Up (레벨 도달 마일스톤 날짜 기록 테이블)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS levelup_history (
+        level INTEGER PRIMARY KEY,
+        achieved_date TEXT
+    )
+    """)
+    
+    # G. Dados iniciais das missões (최초 1회 주인님의 실제 정예 11개 퀘스트 기본 주입)
     cursor.executemany("""
     INSERT OR IGNORE INTO master_quest_db VALUES (?, ?, ?, ?, ?, ?, ?)
     """, [
-        ('Q2606-01', 'Alongamento matinal', 'E', 10, 5, 8, 'Active'),
-        ('Q2606-02', 'Ler 3 páginas de um livro', 'N', 30, 15, 8, 'Active'),
-        ('Q2606-03', 'Análise tática de futebol', 'H', 50, 25, 3, 'Active'),
-        ('Q2606-04', 'Relatório de personal trainer', 'H', 50, 25, 11, 'Active')
+        ('Q260606-01', 'Limpeza geral da casa (청소)', 'H', 50, 25, 7, 'Active'),
+        ('Q260606-02', 'Fechamento de contas mensal (결산)', 'N', 30, 15, 11, 'Active'),
+        ('Q260606-03', 'Dormir cedo (일찍 잠자기)', 'N', 30, 15, 8, 'Active'),
+        ('Q260606-04', 'Ingestão de proteínas adequada (단백질 섭취)', 'N', 30, 15, 8, 'Active'),
+        ('Q260606-05', 'Estudar no Duolingo', 'E', 10, 5, 8, 'Active'),
+        ('Q260606-06', 'Estudar vocabulário de português (포어 단어 공부)', 'E', 10, 5, 8, 'Active'),
+        ('Q260606-07', 'Acumular pontos KBPay', 'E', 10, 5, 8, 'Active'),
+        ('Q260606-08', 'Acumular pontos NPay', 'E', 10, 5, 8, 'Active'),
+        ('Q260606-09', 'Acumular pontos TossPay', 'E', 10, 5, 8, 'Active'),
+        ('Q260606-10', 'Estudar uma página de Educação Física (EF 학습)', 'H', 50, 25, 8, 'Active'),
+        ('Q260606-11', 'Escrever uma linha de código (코딩 1줄 작성)', 'H', 50, 25, 8, 'Active')
     ])
     
-    # G. Dados iniciais da loja
+    # H. Dados iniciais da loja
     cursor.executemany("""
-    INSERT OR IGNORE INTO reward_menu VALUES (?, ?)
+    INSERT OR IGNORE INTO reward_menu VALUES (?, ?, ?)
     """, [
-        ('Comer Frango Frito 🍗', 500),
-        ('1 Hora de YouTube 📱', 100),
-        ('Assistir a um Filme na Netflix 🎬', 200),
-        ('Ticket para Dormir até Tarde ⏰', 300)
+        ('Comer Frango Frito 🍗', 500, 'Active'),
+        ('1 Hora de YouTube 📱', 100, 'Active'),
+        ('Assistir a um Filme na Netflix 🎬', 200, 'Active'),
+        ('Ticket para Dormir até Tarde ⏰', 300, 'Active')
     ])
     
-    # 📊 H. 데이터베이스 기반 레벨 1~100 자동 규칙 대량 주입 (100만 XP 만렙 리밸런싱 패치)
-    # 루프를 돌며 과학적으로 설계된 100개 레벨 스펙트럼을 테이블에 밀어 넣습니다.
+    # I. 데이터베이스 기반 레벨 1~100 자동 규칙 대량 주입 (100만 XP 만렙 리밸런싱 패치)
     level_rules = []
     for lv in range(1, 101):
         if lv == 1: required = 0
@@ -109,7 +124,6 @@ def init_log_table_safety():
         elif lv <= 90: required = 179000 + (lv - 60) * 18000
         else: required = 719000 + (lv - 90) * 31200
         
-        # 칭호 매핑 바인딩
         if lv == 100: title = "Deus da Alta Performance 🌌"
         elif lv >= 96: title = "Iluminado da Rotina 🧘"
         elif lv >= 91: title = "Ser de Luz Disciplinado ☀️"
@@ -138,6 +152,9 @@ def init_log_table_safety():
         
     cursor.executemany("INSERT OR IGNORE INTO level_config VALUES (?, ?, ?)", level_rules)
     
+    # Lv 1 도달 날짜는 최초 실행일로 강제 주입 (마일스톤 첫 단추)
+    cursor.execute("INSERT OR IGNORE INTO levelup_history VALUES (1, ?)", (datetime.now().strftime("%Y-%m-%d"),))
+    
     conn.commit()
     conn.close()
 
@@ -154,13 +171,11 @@ try:
     
     shop_df = query_db("SELECT SUM(spent_gold) as attr_spent FROM reward_shop_log")
     total_spent_gold = int(shop_df['attr_spent'].iloc[0]) if pd.notna(shop_df['attr_spent'].iloc[0]) else 0
-    
     current_remaining_gold = total_earned_gold - total_spent_gold
 except Exception:
     total_accumulated_xp, total_earned_gold, current_remaining_gold = 0, 0, 0
 
-# 🧠 🤖 [핵심 진화: SQL 기반 실시간 레벨 매핑 로직]
-# 내 누적 경험치보다 요구량이 낮거나 같은 레벨 중 가장 높은 레벨을 지하실에서 단 한 줄로 서치해 옵니다!
+# SQL 기반 실시간 현재 레벨 계산
 try:
     lvl_query = "SELECT level, title FROM level_config WHERE required_xp <= ? ORDER BY level DESC LIMIT 1"
     lvl_df = query_db(lvl_query, (total_accumulated_xp,))
@@ -169,13 +184,31 @@ try:
 except Exception:
     current_level, character_title = 1, "Iniciante da Vida Saudável 🌱"
 
+# 다음 레벨 정보 및 남은 경험치 계산 연산
+try:
+    if current_level < 100:
+        next_lvl_data = query_db("SELECT required_xp FROM level_config WHERE level = ?", (current_level + 1,))
+        next_lvl_xp = int(next_lvl_data['required_xp'].iloc[0])
+        xp_needed_for_next = next_lvl_xp - total_accumulated_xp
+        current_lvl_base = int(query_db("SELECT required_xp FROM level_config WHERE level = ?", (current_level,))['required_xp'].iloc[0])
+        
+        # st.progress용 비율 (0.0 ~ 1.0)
+        progress_total = next_lvl_xp - current_lvl_base
+        progress_current = total_accumulated_xp - current_lvl_base
+        progress_ratio = min(max(progress_current / progress_total, 0.0), 1.0)
+    else:
+        xp_needed_for_next = 0
+        progress_ratio = 1.0
+except Exception:
+    xp_needed_for_next = 0
+    progress_ratio = 0.0
+
 
 # ==========================================
 # 🖥️ [Frontend UI: Abas de Navegação]
 # ==========================================
-st.title("👑 Painel de RPG Pessoal")
-
-tab_play, tab_manage = st.tabs(["🎮 Jogar (플레이)", "⚙️ Gerenciador de Missões (퀘스트 관리)"])
+# 기획에 맞춘 깔끔한 3개 탭 체제 구축
+tab_play, tab_manage, tab_jornada = st.tabs(["🎮 Jogar (플레이)", "⚙️ Gerenciador (종합 관리)", "🧭 Jornada (성장 여정)"])
 
 # ------------------------------------------
 # 🎮 TAB 1: 플레이 대시보드 영역
@@ -190,6 +223,13 @@ with tab_play:
     with status_col3:
         st.metric("Ouro Disponível", f"{current_remaining_gold} G")
     st.markdown(f"**Seu Título Honorário Atual:** `{character_title}`")
+    
+    # 🌟 [신설] 시각적 실시간 경험치 게이지 바 출력 구역
+    if current_level < 100:
+        st.progress(progress_ratio)
+        st.caption(f"💡 **Próximo Nível (다음 레벨까지):** `{xp_needed_for_next} XP` 남음")
+    else:
+        st.success("🌌 **Você atingiu o nível máximo! Deus da Alta Performance.**")
 
     st.write("---")
     st.subheader("⚙️ Painel de Controle")
@@ -253,15 +293,30 @@ with tab_play:
                 formatted_date = selected_date.strftime("%Y-%m-%d")
                 run_db_command(sql_insert, (formatted_date, current_day_name, ", ".join(completed_ids), total_xp, total_gold))
                 
-                st.balloons()
+                # 🌟 [레벨업 마일스톤 탐지기 작동]
+                # 오늘 보상을 더해서 변동된 신규 누적 경험치 계산
+                new_accumulated_xp = total_accumulated_xp + total_xp
+                new_lvl_df = query_db("SELECT level FROM level_config WHERE required_xp <= ? ORDER BY level DESC LIMIT 1", (new_accumulated_xp,))
+                new_level = int(new_lvl_df['level'].iloc[0])
+                
+                # 만약 레벨이 기존보다 상승했다면 마일스톤 도장 찍기
+                if new_level > current_level:
+                    for lv_step in range(current_level + 1, new_level + 1):
+                        run_db_command("INSERT OR IGNORE INTO levelup_history (level, achieved_date) VALUES (?, ?)", (lv_step, formatted_date))
+                    st.balloons()
+                    st.success(f"🚀 **LEVEL UP! Você subiu para o LV. {new_level}!**")
+                else:
+                    st.balloons()
+                
                 st.success(f"🎉 Resultados do dia [{formatted_date}] salvos com sucesso!")
                 st.rerun()
             except Exception as e:
                 st.error(f"❌ Erro ao salvar: {e}")
 
+    # --- 상점 인터페이스 (Active 상품만 노출되도록 필터링 개편) ---
     st.write("---")
     st.subheader("🛒 Loja de Recompensas Real")
-    menu_df = query_db("SELECT reward_item, price_gold FROM reward_menu")
+    menu_df = query_db("SELECT reward_item, price_gold FROM reward_menu WHERE status = 'Active'")
     item_list = menu_df['reward_item'].tolist()
 
     if item_list:
@@ -282,120 +337,155 @@ with tab_play:
                     st.rerun()
                 except Exception as e:
                     st.error(f"Erro ao usar a loja: {e}")
+    else:
+        st.info("A loja está vazia no momento. Adicione itens na aba do gerenciador.")
 
 
 # ------------------------------------------
-# ⚙️ TAB 2: 퀘스트 관리자 영역
+# ⚙️ TAB 2: 종합 관리자 영역 (Missões & Loja Dual Control)
 # ------------------------------------------
 with tab_manage:
-    st.subheader("🛠️ Painel do Administrador (퀘스트 관리자 관제탑)")
+    st.subheader("⚙️ Painel do Controle Geral (종합 제어 관제탑)")
+    
+    # 상단 서브 선택바: 퀘스트 관리할 것인가 / 상점 관리할 것인가
+    sub_menu = st.segmented_control("Selecione o alvo de gerenciamento (관리 대상 선택):", ["🎯 Missões (퀘스트 관리)", "🛒 Loja (상점 메뉴판 관리)"], default="🎯 Missões (퀘스트 관리)")
     
     diff_rewards = {"E": (10, 5), "N": (30, 15), "H": (50, 25)}
     
-    all_quests = query_db("""
-        SELECT quest_id, quest_name, difficulty, reward_xp, reward_gold, frequency, status 
-        FROM master_quest_db
-        ORDER BY status ASC, quest_id DESC
-    """)
-    
-    def style_inactive_rows(row):
-        if row['status'] == 'Inactive':
-            return ['color: #A0A0A0; font-style: italic;'] * len(row)
-        return [''] * len(row)
-    
-    st.markdown("### 📜 Lista de Todas as Missões (현재 등록된 전체 퀘스트)")
-    styled_df = all_quests.style.apply(style_inactive_rows, axis=1)
-    st.dataframe(styled_df, use_container_width=True)
-    
-    st.write("---")
-    
-    manage_action = st.radio("Selecione uma ação (작업 선택):", ["➕ Adicionar Nova Missão (퀘스트 추가)", "🔄 Modificar Missão (퀘스트 수정 및 활성/비활성)"], horizontal=True)
-    
-    # ➕ 1. 새로운 퀘스트 추가 양식
-    if "➕" in manage_action:
-        st.markdown("### ➕ Criar Nova Missão (새 퀘스트 만들기)")
+    # -------------------------------------------------------------
+    # 서브메뉴 1: 🎯 Missões (퀘스트 관리)
+    # -------------------------------------------------------------
+    if "Missões" in sub_menu:
+        all_quests = query_db("SELECT quest_id, quest_name, difficulty, reward_xp, reward_gold, frequency, status FROM master_quest_db ORDER BY status ASC, quest_id DESC")
         
-        today_str = datetime.now().strftime("%y%m%d")
-        id_prefix = f"Q{today_str}-"
+        def style_inactive_rows(row):
+            return ['color: #A0A0A0; font-style: italic;'] * len(row) if row['status'] == 'Inactive' else [''] * len(row)
         
-        try:
-            count_df = query_db("SELECT COUNT(*) as cnt FROM master_quest_db WHERE quest_id LIKE ?", (f"{id_prefix}%",))
-            today_count = int(count_df['cnt'].iloc[0])
-        except Exception:
-            today_count = 0
+        st.markdown("### 📜 Lista de Todas as Missões")
+        st.dataframe(all_quests.style.apply(style_inactive_rows, axis=1), use_container_width=True)
+        
+        manage_action = st.radio("Ação:", ["➕ Adicionar Nova Missão", "🔄 Modificar Missão"], horizontal=True, key="m_action")
+        
+        if "➕" in manage_action:
+            st.markdown("##### ➕ Criar Nova Missão")
+            today_str = datetime.now().strftime("%y%m%d")
+            id_prefix = f"Q{today_str}-"
+            try:
+                today_count = int(query_db("SELECT COUNT(*) as cnt FROM master_quest_db WHERE quest_id LIKE ?", (f"{id_prefix}%",))['cnt'].iloc[0])
+            except Exception: today_count = 0
+            auto_generated_id = f"{id_prefix}{today_count + 1:02d}"
             
-        next_sequence = today_count + 1
-        auto_generated_id = f"{id_prefix}{next_sequence:02d}"
-        
-        st.info(f"🆔 **Código Gerado Automatically:** `{auto_generated_id}`")
-        
-        new_name = st.text_input("Nome da Missão (퀘스트 내용)", placeholder="Fazer academia por 1 hora")
-        
-        col_m1, col_m2 = st.columns(2)
-        with col_m1:
-            new_diff = st.selectbox("Dificuldade (난이도)", ["E", "N", "H"])
-        with col_m2:
-            new_freq = st.selectbox("Frequência (반복 요일 선택)", [
-                ("Diário (매일)", 8),
-                ("Domingo (일요일)", 1), ("Segunda (월요일)", 2), ("Terça (화요일)", 3),
-                ("Quarta (수요일)", 4), ("Quinta (목요일)", 5), ("Sexta (금요일)", 6), ("Sábado (토요일)", 7),
-                ("Início do Mês (월초)", 10), ("Fim do Mês (월말)", 11)
-            ], format_func=lambda x: x[0])
+            st.info(f"🆔 Código Gerado: `{auto_generated_id}`")
+            new_name = st.text_input("Nome da Missão", key="q_new_name")
+            col_m1, col_m2 = st.columns(2)
+            with col_m1: new_diff = st.selectbox("Dificuldade", ["E", "N", "H"], key="q_new_diff")
+            with col_m2: new_freq = st.selectbox("Frequência", [("Diário", 8), ("Domingo", 1), ("Segunda", 2), ("Terça", 3), ("Quarta", 4), ("Quinta", 5), ("Sexta", 6), ("Sábado", 7), ("Início do Mês", 10), ("Fim do Mês", 11)], format_func=lambda x: x[0], key="q_new_freq")
             
-        xp_reward, gold_reward = diff_rewards[new_diff]
-        st.write(f"💡 *Esta dificuldade concederá automaticamente:* **+{xp_reward} XP** / **+{gold_reward} Gold**")
-        
-        if st.button("🚀 Registrar Nova Missão (데이터베이스에 추가)"):
-            if not new_name:
-                st.error("❌ O nome da missão é obrigatório!")
-            else:
-                try:
-                    run_db_command("""
-                    INSERT INTO master_quest_db (quest_id, quest_name, difficulty, reward_xp, reward_gold, frequency, status)
-                    VALUES (?, ?, ?, ?, ?, ?, 'Active')
-                    """, (auto_generated_id, new_name, new_diff, xp_reward, gold_reward, new_freq[1]))
-                    st.success(f"🎉 Missão [{auto_generated_id}] registrada com sucesso!")
+            xp_reward, gold_reward = diff_rewards[new_diff]
+            if st.button("🚀 Registrar Missão", key="q_reg_btn"):
+                if not new_name: st.error("Nome obrigatório!")
+                else:
+                    run_db_command("INSERT INTO master_quest_db VALUES (?, ?, ?, ?, ?, ?, 'Active')", (auto_generated_id, new_name, new_diff, xp_reward, gold_reward, new_freq[1]))
+                    st.success("Registrada!")
                     st.rerun()
-                except Exception as e:
-                    st.error(f"❌ Erro no banco de dados: {e}")
-
-    # 🔄 2. 기존 퀘스트 수정 양식
-    else:
-        st.markdown("### 🔄 Modificar Missão Existente (기존 퀘스트 정보 변경)")
-        quest_options = all_quests['quest_id'].tolist()
-        
-        if quest_options:
-            target_id = st.selectbox("Selecione o Código da Missão:", quest_options)
-            
-            selected_quest_data = all_quests[all_quests['quest_id'] == target_id].iloc[0]
-            current_title = selected_quest_data['quest_name']
-            current_status = selected_quest_data['status']
-            current_diff = selected_quest_data['difficulty']
-            
-            st.warning(f"Modificando: **{current_title}**")
-            
-            col_u1, col_u2 = st.columns(2)
-            with col_u1:
-                idx_status = ["Active", "Inactive"].index(current_status)
-                new_status = st.selectbox("Novo Status (새 상태):", ["Active", "Inactive"], index=idx_status)
-            with col_u2:
-                idx_diff = ["E", "N", "H"].index(current_diff)
-                new_diff = st.selectbox("Nova Dificuldade (새 난이도):", ["E", "N", "H"], index=idx_diff)
-            
-            updated_xp, updated_gold = diff_rewards[new_diff]
-            st.write(f"📊 *Se salvar, as recompensas mudarão para:* **+{updated_xp} XP** / **+{updated_gold} Gold**")
-            
-            if st.button("💾 Atualizar Missão no Banco de Dados (변경사항 저장)"):
-                try:
-                    run_db_command("""
-                        UPDATE master_quest_db 
-                        SET status = ?, difficulty = ?, reward_xp = ?, reward_gold = ? 
-                        WHERE quest_id = ?
-                    """, (new_status, new_diff, updated_xp, updated_gold, target_id))
                     
-                    st.success(f"⚙️ Missão [{target_id}] atualizada com sucesso!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Erro ao atualizar missão: {e}")
         else:
-            st.info("Nenhuma missão cadastrada no sistema.")
+            st.markdown("##### 🔄 Modificar Missão")
+            quest_options = all_quests['quest_id'].tolist()
+            if quest_options:
+                target_id = st.selectbox("Selecione o Código:", quest_options, key="q_up_target")
+                selected_q = all_quests[all_quests['quest_id'] == target_id].iloc[0]
+                col_u1, col_u2 = st.columns(2)
+                with col_u1: new_status = st.selectbox("Novo Status:", ["Active", "Inactive"], index=["Active", "Inactive"].index(selected_q['status']), key="q_up_status")
+                with col_u2: new_diff = st.selectbox("Nova Dificuldade:", ["E", "N", "H"], index=["E", "N", "H"].index(selected_q['difficulty']), key="q_up_diff")
+                
+                u_xp, u_gold = diff_rewards[new_diff]
+                if st.button("💾 Atualizar Missão", key="q_up_btn"):
+                    run_db_command("UPDATE master_quest_db SET status=?, difficulty=?, reward_xp=?, reward_gold=? WHERE quest_id=?", (new_status, new_diff, u_xp, u_gold, target_id))
+                    st.success("Atualizada!")
+                    st.rerun()
+
+    # -------------------------------------------------------------
+    # 🌟 [신설] 서브메뉴 2: 🛒 Loja (상점 메뉴판 관리 대시보드)
+    # -------------------------------------------------------------
+    else:
+        all_rewards = query_db("SELECT reward_item, price_gold, status FROM reward_menu ORDER BY status ASC, price_gold ASC")
+        
+        def style_shop_rows(row):
+            return ['color: #A0A0A0; font-style: italic;'] * len(row) if row['status'] == 'Inactive' else [''] * len(row)
+            
+        st.markdown("### 📜 Cardápio Completo da Loja (전체 상점 메뉴판)")
+        st.dataframe(all_rewards.style.apply(style_shop_rows, axis=1), use_container_width=True)
+        
+        shop_action = st.radio("Ação da Loja:", ["➕ Adicionar Novo Item", "🔄 Modificar Item Existente"], horizontal=True, key="s_action")
+        
+        if "➕" in shop_action:
+            st.markdown("##### ➕ Criar Novo Item de Recompensa")
+            s_new_name = st.text_input("Nome do Item (예: Jogar PlayStation 1 hora)", key="s_new_name")
+            s_new_price = st.number_input("Preço em Ouro (Gold)", min_value=1, value=100, step=10, key="s_new_price")
+            
+            if st.button("🚀 Registrar Item na Loja", key="s_reg_btn"):
+                if not s_new_name: st.error("Nome do item obrigatório!")
+                else:
+                    run_db_command("INSERT OR REPLACE INTO reward_menu VALUES (?, ?, 'Active')", (s_new_name, int(s_new_price)))
+                    st.success("Item adicionado com sucesso!")
+                    st.rerun()
+        else:
+            st.markdown("##### 🔄 Modificar Item de Recompensa")
+            item_options = all_rewards['reward_item'].tolist()
+            if item_options:
+                target_item = st.selectbox("Selecione o Item para Modificar:", item_options, key="s_up_target")
+                selected_i = all_rewards[all_rewards['reward_item'] == target_item].iloc[0]
+                
+                col_s1, col_s2 = st.columns(2)
+                with col_s1: s_up_status = st.selectbox("Novo Status:", ["Active", "Inactive"], index=["Active", "Inactive"].index(selected_i['status']), key="s_up_status")
+                with col_s2: s_up_price = st.number_input("Novo Preço (Gold):", min_value=1, value=int(selected_i['price_gold']), step=10, key="s_up_price")
+                
+                if st.button("💾 Atualizar Item na Loja", key="s_up_btn"):
+                    run_db_command("UPDATE reward_menu SET status=?, price_gold=? WHERE reward_item=?", (s_up_status, int(s_up_price), target_item))
+                    st.success("Item da loja atualizado com sucesso!")
+                    st.rerun()
+
+
+# ------------------------------------------
+# 🧭 TAB 3: 🌟 [신설] 성장 여정 (Jornada) 영역
+# ------------------------------------------
+with tab_jornada:
+    st.subheader("🧭 Jornada de Crescimento (주인님의 위대한 성장 여정)")
+    st.markdown("레벨 1부터 100까지의 전체 마일스톤 지도입니다. 도달한 레벨의 역사적인 날짜 도장을 확인하세요.")
+    
+    # 1. 지하실의 100개 레벨 설정과 실제 도달 날짜 기록 테이블을 LEFT JOIN 연산으로 융합
+    jornada_query = """
+        SELECT lc.level, lc.required_xp, lc.title, lh.achieved_date
+        FROM level_config lc
+        LEFT JOIN levelup_history lh ON lc.level = lh.level
+        ORDER BY lc.level DESC
+    """
+    jornada_df = query_db(jornada_query)
+    
+    # 2. 결과 가공: 날짜가 있으면 완료 마크, 없으면 미완료 마크 바인딩
+    jornada_df['Status'] = jornada_df['achieved_date'].apply(lambda x: "✅ Concluído" if pd.notna(x) else "🔒 Bloqueado")
+    jornada_df['Data de Conclusão'] = jornada_df['achieved_date'].apply(lambda x: x if pd.notna(x) else "-")
+    
+    # 사용할 열만 필터링하여 뷰(View) 가공
+    display_jornada = jornada_df[['level', 'required_xp', 'title', 'Status', 'Data de Conclusão']].copy()
+    display_jornada.columns = ['Nível', 'XP Necessário', 'Título Honorário', 'Status', 'Data de Conclusão']
+    
+    # 🎨 3. 현재 위치(Gold), 지나온 길(Light Green), 미래(Gray) 시각적 코팅 스크립트
+    def style_jornada_map(row):
+        lvl = row['Nível']
+        status = row['Status']
+        
+        if lvl == current_level:
+            return ['background-color: #FFEAA7; color: #000000; font-weight: bold;'] * len(row)  # 현재 위치: 황금빛 하이라이트
+        elif "Concluído" in status:
+            return ['background-color: #E8F5E9; color: #2E7D32;'] * len(row)  # 지나온 길: 연초록색 안전지대
+        else:
+            return ['color: #B0B0B0; font-style: italic;'] * len(row)  # 미래의 길: 연회색 안개 처리
+
+    # 완성된 100층의 시각적 타임라인 마일스톤 표 출력
+    st.dataframe(
+        display_jornada.style.apply(style_jornada_map, axis=1), 
+        use_container_width=True, 
+        height=500
+    )
