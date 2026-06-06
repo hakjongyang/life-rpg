@@ -323,3 +323,30 @@ with tab_manage:
             st.warning(f"Modificando: **{current_title}**")
             
             # 수정 레이아웃 구성 (상태와 난이도를 나란히 배치)
+            col_u1, col_u2 = st.columns(2)
+            with col_u1:
+                idx_status = ["Active", "Inactive"].index(current_status)
+                new_status = st.selectbox("Novo Status (새 상태):", ["Active", "Inactive"], index=idx_status)
+            with col_u2:
+                idx_diff = ["E", "N", "H"].index(current_diff)
+                new_diff = st.selectbox("Nova Dificuldade (새 난이도):", ["E", "N", "H"], index=idx_diff)
+            
+            # 새로 변경될 난이도에 따른 실시간 보상 시뮬레이션 안내
+            updated_xp, updated_gold = diff_rewards[new_diff]
+            st.write(f"📊 *Se salvar, as recompensas mudarão para:* **+{updated_xp} XP** / **+{updated_gold} Gold**")
+            
+            if st.button("💾 Atualizar Missão no Banco de Dados (변경사항 저장)"):
+                try:
+                    # 난이도, XP, 골드, 상태를 한 번에 지하실(DB)에 동기화
+                    run_db_command("""
+                        UPDATE master_quest_db 
+                        SET status = ?, difficulty = ?, reward_xp = ?, reward_gold = ? 
+                        WHERE quest_id = ?
+                    """, (new_status, new_diff, updated_xp, updated_gold, target_id))
+                    
+                    st.success(f"⚙️ Missão [{target_id}] atualizada com sucesso!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erro ao atualizar missão: {e}")
+        else:
+            st.info("Nenhuma missão cadastrada no sistema.")
