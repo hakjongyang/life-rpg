@@ -176,7 +176,7 @@ with tab_play:
                 total_xp += row['reward_xp']
                 total_gold += row['reward_gold']
     else:
-        st.info("Nenhuma missão ativa agendada para hoje. Aproveite para descansar!")
+        st.info("Nenhuma missão activa agendada para hoje. Aproveite para descansar!")
 
     st.write("---")
     st.subheader("📝 Resumo do Dia")
@@ -231,33 +231,32 @@ with tab_play:
 
 
 # ------------------------------------------
-# ⚙️ TAB 2: 퀘스트 관리자 영역 (정렬 및 스타일링 보완)
+# ⚙️ TAB 2: 퀘스트 관리자 영역 (★난이도 수정 기능 추가 탑재)
 # ------------------------------------------
 with tab_manage:
     st.subheader("🛠️ Painel do Administrador (퀘스트 관리자 관제탑)")
     
-    # 1. 지하실에서 꺼내올 때 Active가 항상 위로 오도록 SQL 정렬 (Active -> Inactive 순서)
+    # 난이도 규칙 사전 정의 (E: Easy, N: Normal, H: Hard)
+    diff_rewards = {"E": (10, 5), "N": (30, 15), "H": (50, 25)}
+    
     all_quests = query_db("""
         SELECT quest_id, quest_name, difficulty, reward_xp, reward_gold, frequency, status 
         FROM master_quest_db
         ORDER BY status ASC, quest_id DESC
     """)
     
-    # 🎨 2. 비활성(Inactive) 행만 흐릿하게(연회색) 만드는 스타일러 함수 선언
     def style_inactive_rows(row):
         if row['status'] == 'Inactive':
-            return ['color: #A0A0A0; font-style: italic;'] * len(row) # 흐릿한 이탤릭체 처리
+            return ['color: #A0A0A0; font-style: italic;'] * len(row)
         return [''] * len(row)
     
     st.markdown("### 📜 Lista de Todas as Missões (현재 등록된 전체 퀘스트)")
-    
-    # 스타일러를 입힌 아름다운 판다스 표 출력
     styled_df = all_quests.style.apply(style_inactive_rows, axis=1)
     st.dataframe(styled_df, use_container_width=True)
     
     st.write("---")
     
-    manage_action = st.radio("Selecione uma ação (작업 선택):", ["➕ Adicionar Nova Missão (퀘스트 추가)", "🔄 Alterar Status da Missão (상태 수정/비활성화)"], horizontal=True)
+    manage_action = st.radio("Selecione uma ação (작업 선택):", ["➕ Adicionar Nova Missão (퀘스트 추가)", "🔄 Modificar Missão (퀘스트 수정 및 활성/비활성)"], horizontal=True)
     
     # ➕ 1. 새로운 퀘스트 추가 양식
     if "➕" in manage_action:
@@ -275,7 +274,7 @@ with tab_manage:
         next_sequence = today_count + 1
         auto_generated_id = f"{id_prefix}{next_sequence:02d}"
         
-        st.info(f"🆔 **Código Gerado Automatically:** `{auto_generated_id}`")
+        st.info(f"🆔 **Código Gerado Automaticamente:** `{auto_generated_id}`")
         
         new_name = st.text_input("Nome da Missão (퀘스트 내용)", placeholder="Fazer academia por 1 hora")
         
@@ -290,7 +289,6 @@ with tab_manage:
                 ("Início do Mês (월초)", 10), ("Fim do Mês (월말)", 11)
             ], format_func=lambda x: x[0])
             
-        diff_rewards = {"E": (10, 5), "N": (30, 15), "H": (50, 25)}
         xp_reward, gold_reward = diff_rewards[new_diff]
         st.write(f"💡 *Esta dificuldade concederá automaticamente:* **+{xp_reward} XP** / **+{gold_reward} Gold**")
         
@@ -308,28 +306,20 @@ with tab_manage:
                 except Exception as e:
                     st.error(f"❌ Erro no banco de dados: {e}")
 
-    # 🔄 2. 기존 퀘스트 상태 수정 양식 (활성화/비활성화 스위치)
+    # 🔄 2. 기존 퀘스트 수정 양식 (★상태 + 난이도 동시 수정 엔진 업그레이드)
     else:
-        st.markdown("### 🔄 Modificar Status (퀘스트 활성/비활성 스위치)")
-        
-        # 선택 상자에서도 가독성을 위해 정렬된 퀘스트 아이디 명단 제공
+        st.markdown("### 🔄 Modificar MissãoExistente (기존 퀘스트 정보 변경)")
         quest_options = all_quests['quest_id'].tolist()
         
         if quest_options:
             target_id = st.selectbox("Selecione o Código da Missão:", quest_options)
-            current_status = all_quests[all_quests['quest_id'] == target_id]['status'].iloc[0]
-            current_title = all_quests[all_quests['quest_id'] == target_id]['quest_name'].iloc[0]
             
-            st.warning(f"A missão selecionada é: **{current_title}** (Status Atual: `{current_status}`)")
+            # 선택된 퀘스트의 현재 데이터 추출
+            selected_quest_data = all_quests[all_quests['quest_id'] == target_id].iloc[0]
+            current_title = selected_quest_data['quest_name']
+            current_status = selected_quest_data['status']
+            current_diff = selected_quest_data['difficulty']
             
-            new_status = st.selectbox("Selecione o Novo Status:", ["Active", "Inactive"], index=0 if current_status == "Active" else 1)
+            st.warning(f"Modificando: **{current_title}**")
             
-            if st.button("💾 Atualizar Status no Banco de Dados"):
-                try:
-                    run_db_command("UPDATE master_quest_db SET status = ? WHERE quest_id = ?", (new_status, target_id))
-                    st.success(f"⚙️ Status da missão [{target_id}] alterado para `{new_status}` com sucesso!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Erro ao atualizar status: {e}")
-        else:
-            st.info("Nenhuma missão cadastrada no sistema.")
+            # 수정 레이아웃 구성 (상태와 난이도를 나란히 배치)
