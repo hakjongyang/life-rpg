@@ -27,6 +27,7 @@ def init_log_table_safety():
     conn = sqlite3.connect("rpg-database.db")
     cursor = conn.cursor()
     
+    # A. Tabela de missões master
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS master_quest_db (
         quest_id TEXT PRIMARY KEY,
@@ -39,6 +40,7 @@ def init_log_table_safety():
     )
     """)
     
+    # B. Tabela de histórico de missões (로그 테이블)
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS quest_history_log (
         log_date TEXT PRIMARY KEY,
@@ -49,6 +51,7 @@ def init_log_table_safety():
     )
     """)
     
+    # C. Tabela do menu de recompensas
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS reward_menu (
         reward_item TEXT PRIMARY KEY,
@@ -56,6 +59,7 @@ def init_log_table_safety():
     )
     """)
     
+    # D. Tabela de histórico de compras
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS reward_shop_log (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -65,6 +69,16 @@ def init_log_table_safety():
     )
     """)
     
+    # 🌟 [신설] E. Tabela de Configuração de Níveis (레벨 메커니즘 지하실 설정 테이블)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS level_config (
+        level INTEGER PRIMARY KEY,
+        required_xp INTEGER,
+        title TEXT
+    )
+    """)
+    
+    # F. Dados iniciais das missões (최초 1회 샘플 주입)
     cursor.executemany("""
     INSERT OR IGNORE INTO master_quest_db VALUES (?, ?, ?, ?, ?, ?, ?)
     """, [
@@ -74,6 +88,7 @@ def init_log_table_safety():
         ('Q2606-04', 'Relatório de personal trainer', 'H', 50, 25, 11, 'Active')
     ])
     
+    # G. Dados iniciais da loja
     cursor.executemany("""
     INSERT OR IGNORE INTO reward_menu VALUES (?, ?)
     """, [
@@ -82,6 +97,46 @@ def init_log_table_safety():
         ('Assistir a um Filme na Netflix 🎬', 200),
         ('Ticket para Dormir até Tarde ⏰', 300)
     ])
+    
+    # 📊 H. 데이터베이스 기반 레벨 1~100 자동 규칙 대량 주입 (100만 XP 만렙 리밸런싱 패치)
+    # 루프를 돌며 과학적으로 설계된 100개 레벨 스펙트럼을 테이블에 밀어 넣습니다.
+    level_rules = []
+    for lv in range(1, 101):
+        if lv == 1: required = 0
+        elif lv <= 10: required = (lv - 1) * 500
+        elif lv <= 30: required = 5000 + (lv - 10) * 1200
+        elif lv <= 60: required = 29000 + (lv - 30) * 5000
+        elif lv <= 90: required = 179000 + (lv - 60) * 18000
+        else: required = 719000 + (lv - 90) * 31200
+        
+        # 칭호 매핑 바인딩
+        if lv == 100: title = "Deus da Alta Performance 🌌"
+        elif lv >= 96: title = "Iluminado da Rotina 🧘"
+        elif lv >= 91: title = "Ser de Luz Disciplinado ☀️"
+        elif lv >= 81: title = "Soberano dos Hábitos 🌟"
+        elif lv >= 71: title = "Lenda da Produtividade 📜"
+        elif lv >= 61: title = "Conquistador Imparável ⛰️"
+        elif lv >= 51: title = "Grande Mestre de Si Mesmo 👑"
+        elif lv >= 41: title = "Vanguardista da Mente 🔮"
+        elif lv >= 31: title = "Dominador do Tempo ⏳"
+        elif lv >= 26: title = "Mestre do Auto-Controle 🧠"
+        elif lv >= 21: title = "Comandante da Rotina 🎖️"
+        elif lv >= 16: title = "Especialista em Foco 🎯"
+        elif lv >= 11: title = "Arquiteto do Hábito 📐"
+        elif lv >= 10: title = "Desbravador do Foco 🏔️"
+        elif lv >= 9: title = "Caçador de Metas 🏹"
+        elif lv >= 8: title = "Guerreiro da Constância 🛡️"
+        elif lv >= 7: title = "Construidor de Disciplina 🏗️"
+        elif lv >= 6: title = "Explorador de Rotinas 🧭"
+        elif lv >= 5: title = "Transcendente da Produtividade 🌌"
+        elif lv >= 4: title = "Mestre dos Hábitos ⚡"
+        elif lv >= 3: title = "Líder da Rotina ⚔️"
+        elif lv >= 2: title = "Praticante Dedicado 🏃"
+        else: title = "Iniciante da Vida Saudável 🌱"
+        
+        level_rules.append((lv, required, title))
+        
+    cursor.executemany("INSERT OR IGNORE INTO level_config VALUES (?, ?, ?)", level_rules)
     
     conn.commit()
     conn.close()
@@ -104,15 +159,14 @@ try:
 except Exception:
     total_accumulated_xp, total_earned_gold, current_remaining_gold = 0, 0, 0
 
-if total_accumulated_xp >= 5000:
-    current_level, character_title = 5, "Transcendente da Produtividade 🌌"
-elif total_accumulated_xp >= 2500:
-    current_level, character_title = 4, "Mestre dos Hábitos ⚡"
-elif total_accumulated_xp >= 1200:
-    current_level, character_title = 3, "Líder da Rotina ⚔️"
-elif total_accumulated_xp >= 500:
-    current_level, character_title = 2, "Praticante Dedicado 🏃"
-else:
+# 🧠 🤖 [핵심 진화: SQL 기반 실시간 레벨 매핑 로직]
+# 내 누적 경험치보다 요구량이 낮거나 같은 레벨 중 가장 높은 레벨을 지하실에서 단 한 줄로 서치해 옵니다!
+try:
+    lvl_query = "SELECT level, title FROM level_config WHERE required_xp <= ? ORDER BY level DESC LIMIT 1"
+    lvl_df = query_db(lvl_query, (total_accumulated_xp,))
+    current_level = int(lvl_df['level'].iloc[0])
+    character_title = str(lvl_df['title'].iloc[0])
+except Exception:
     current_level, character_title = 1, "Iniciante da Vida Saudável 🌱"
 
 
@@ -176,7 +230,7 @@ with tab_play:
                 total_xp += row['reward_xp']
                 total_gold += row['reward_gold']
     else:
-        st.info("Nenhuma missão activa agendada para hoje. Aproveite para descansar!")
+        st.info("Nenhuma missão ativa agendada para hoje. Aproveite para descansar!")
 
     st.write("---")
     st.subheader("📝 Resumo do Dia")
@@ -231,12 +285,11 @@ with tab_play:
 
 
 # ------------------------------------------
-# ⚙️ TAB 2: 퀘스트 관리자 영역 (★난이도 수정 기능 추가 탑재)
+# ⚙️ TAB 2: 퀘스트 관리자 영역
 # ------------------------------------------
 with tab_manage:
     st.subheader("🛠️ Painel do Administrador (퀘스트 관리자 관제탑)")
     
-    # 난이도 규칙 사전 정의 (E: Easy, N: Normal, H: Hard)
     diff_rewards = {"E": (10, 5), "N": (30, 15), "H": (50, 25)}
     
     all_quests = query_db("""
@@ -274,7 +327,7 @@ with tab_manage:
         next_sequence = today_count + 1
         auto_generated_id = f"{id_prefix}{next_sequence:02d}"
         
-        st.info(f"🆔 **Código Gerado Automaticamente:** `{auto_generated_id}`")
+        st.info(f"🆔 **Código Gerado Automatically:** `{auto_generated_id}`")
         
         new_name = st.text_input("Nome da Missão (퀘스트 내용)", placeholder="Fazer academia por 1 hora")
         
@@ -306,15 +359,14 @@ with tab_manage:
                 except Exception as e:
                     st.error(f"❌ Erro no banco de dados: {e}")
 
-    # 🔄 2. 기존 퀘스트 수정 양식 (★상태 + 난이도 동시 수정 엔진 업그레이드)
+    # 🔄 2. 기존 퀘스트 수정 양식
     else:
-        st.markdown("### 🔄 Modificar MissãoExistente (기존 퀘스트 정보 변경)")
+        st.markdown("### 🔄 Modificar Missão Existente (기존 퀘스트 정보 변경)")
         quest_options = all_quests['quest_id'].tolist()
         
         if quest_options:
             target_id = st.selectbox("Selecione o Código da Missão:", quest_options)
             
-            # 선택된 퀘스트의 현재 데이터 추출
             selected_quest_data = all_quests[all_quests['quest_id'] == target_id].iloc[0]
             current_title = selected_quest_data['quest_name']
             current_status = selected_quest_data['status']
@@ -322,7 +374,6 @@ with tab_manage:
             
             st.warning(f"Modificando: **{current_title}**")
             
-            # 수정 레이아웃 구성 (상태와 난이도를 나란히 배치)
             col_u1, col_u2 = st.columns(2)
             with col_u1:
                 idx_status = ["Active", "Inactive"].index(current_status)
@@ -331,13 +382,11 @@ with tab_manage:
                 idx_diff = ["E", "N", "H"].index(current_diff)
                 new_diff = st.selectbox("Nova Dificuldade (새 난이도):", ["E", "N", "H"], index=idx_diff)
             
-            # 새로 변경될 난이도에 따른 실시간 보상 시뮬레이션 안내
             updated_xp, updated_gold = diff_rewards[new_diff]
             st.write(f"📊 *Se salvar, as recompensas mudarão para:* **+{updated_xp} XP** / **+{updated_gold} Gold**")
             
             if st.button("💾 Atualizar Missão no Banco de Dados (변경사항 저장)"):
                 try:
-                    # 난이도, XP, 골드, 상태를 한 번에 지하실(DB)에 동기화
                     run_db_command("""
                         UPDATE master_quest_db 
                         SET status = ?, difficulty = ?, reward_xp = ?, reward_gold = ? 
