@@ -489,3 +489,5 @@ with tab_jornada:
         use_container_width=True, 
         height=500
     )
+
+# 실행: python -m streamlit run app.py
